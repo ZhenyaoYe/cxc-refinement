@@ -36,18 +36,9 @@ def simulate_correlation_matrix(
     total_size = sum(sizes)
 
     # =====================================================
-    # Global weak background correlation (across cell types)
+    # Initialize matrix (will be overwritten blockwise)
     # =====================================================
-    # This mimics shared technical / biological effects
-    global_bg_mean = 0.08
-    global_bg_sd   = 0.02
-
-    mat = rng.normal(
-        loc=global_bg_mean,
-        scale=global_bg_sd,
-        size=(total_size, total_size)
-    )
-    mat = (mat + mat.T) / 2
+    mat = np.zeros((total_size, total_size), dtype=float)
     np.fill_diagonal(mat, 1.0)
 
     idx = np.cumsum((0,) + sizes)
@@ -56,53 +47,50 @@ def simulate_correlation_matrix(
     # Cell-type internal block structure
     # =====================================================
     hierarchy = {
-        0: dict(sub_sizes=[500, 500],   sub_means=[0.6, 0.4]),  # Astrocyte
-        1: dict(sub_sizes=[500],        sub_means=[0.5]),       # Microglia
-        2: dict(sub_sizes=[1500, 1500], sub_means=[0.6, 0.2]),  # Oligodendrocyte
+        0: dict(sub_sizes=[500, 500],   sub_means=[0.6, 0.4]),   # Astrocyte
+        1: dict(sub_sizes=[500],        sub_means=[0.5]),        # Microglia
+        2: dict(sub_sizes=[1500, 1500], sub_means=[0.6, 0.2]),   # Oligodendrocyte
     }
 
-    # Sparsity controls (VERY important)
-    within_block_density = 0.6   # fraction of non-zero edges inside blocks
+    # Sparsity controls (within CT only)
+    within_block_density = 0.6
     within_block_sd      = 0.05
 
+    # =====================================================
+    # Within cell types (sparse sub-blocks)
+    # =====================================================
     for i in range(len(sizes)):
         base = idx[i]
         sub_sizes = hierarchy[i]["sub_sizes"]
         sub_means = hierarchy[i]["sub_means"]
         sub_idx = np.cumsum([0] + sub_sizes)
 
-        # -----------------------------
-        # Within-subblock (SPARSE)
-        # -----------------------------
+        # ---- within sub-blocks
         for k in range(len(sub_sizes)):
             s = base + sub_idx[k]
             e = base + sub_idx[k + 1]
             n = e - s
 
-            # inflate mean so sparsity does NOT shrink correlations
+            # inflate mean to counter sparsity
             effective_mean = sub_means[k] / within_block_density
 
-            # initialize empty block
             block = np.zeros((n, n))
-
-            # apply sparsity mask
             mask = rng.random((n, n)) < within_block_density
             mask = np.triu(mask, k=1)
-            # generate only non-zero edges
-            vals = rng.normal(loc=effective_mean,
-                              scale=within_block_sd,
-                              size=mask.sum())
+
+            vals = rng.normal(
+                loc=effective_mean,
+                scale=within_block_sd,
+                size=mask.sum()
+            )
             block[mask] = vals
 
-            # symmetrize + diagonal
-            block = (block + block.T) / 2
+            block = block + block.T
             np.fill_diagonal(block, 1.0)
 
             mat[s:e, s:e] = block
 
-        # -----------------------------
-        # Between-subblocks (same CT)
-        # -----------------------------
+        # ---- between sub-blocks (same CT)
         for k in range(len(sub_sizes)):
             for l in range(k + 1, len(sub_sizes)):
                 s1 = base + sub_idx[k]
@@ -111,7 +99,7 @@ def simulate_correlation_matrix(
                 e2 = base + sub_idx[l + 1]
 
                 if i == 2:
-                    # CT3: strong NEGATIVE coupling
+                    # Oligodendrocyte: strong negative coupling
                     mean_between = -0.8
                     sd_between   = 0.05
                 else:
@@ -128,11 +116,40 @@ def simulate_correlation_matrix(
                 mat[s2:e2, s1:e1] = block.T
 
     # =====================================================
+    # Between cell types (NON-ZERO, STRUCTURED)
+    # =====================================================
+    # Cell-type–pair specific correlations (no sparsity)
+    ct_cross_means = {
+        (0, 1): 0.25,   # Astrocyte ↔ Microglia
+        (0, 2): 0.15,   # Astrocyte ↔ Oligodendrocyte
+        (1, 2): 0.05    # Microglia ↔ Oligodendrocyte
+    }
+    ct_cross_sd = 0.04
+
+    for i in range(len(sizes)):
+        for j in range(i + 1, len(sizes)):
+            s1, e1 = idx[i], idx[i + 1]
+            s2, e2 = idx[j], idx[j + 1]
+
+            mean_ij = ct_cross_means.get((i, j), 0.1)
+
+            block = rng.normal(
+                loc=mean_ij,
+                scale=ct_cross_sd,
+                size=(e1 - s1, e2 - s2)
+            )
+
+            mat[s1:e1, s2:e2] = block
+            mat[s2:e2, s1:e1] = block.T
+
+    # =====================================================
     # Final cleanup
     # =====================================================
-    mat = np.clip(mat, -1, 1)
+    mat = np.clip(mat, -1.0, 1.0)
 
-    # build labels
+    # =====================================================
+    # Build labels
+    # =====================================================
     cell_ids = []
     cell_type_vec = []
     for ct, n in zip(cell_types, sizes):
@@ -143,7 +160,6 @@ def simulate_correlation_matrix(
     ct_map  = pd.DataFrame({"cell_id": cell_ids, "cell_type": cell_type_vec})
 
     return corr_df, ct_map
-
 
 # =========================================================
 # UI: data input

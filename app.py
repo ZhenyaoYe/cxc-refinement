@@ -53,7 +53,7 @@ def simulate_correlation_matrix(
     }
 
     # Sparsity controls (within CT only)
-    within_block_density = 0.6
+    within_block_density = 0
     within_block_sd      = 0.05
 
     # =====================================================
@@ -100,7 +100,7 @@ def simulate_correlation_matrix(
 
                 if i == 2:
                     # Oligodendrocyte: strong negative coupling
-                    mean_between = -0.8
+                    mean_between = -0.6
                     sd_between   = 0.05
                 else:
                     mean_between = 0.15

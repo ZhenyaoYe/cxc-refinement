@@ -260,8 +260,22 @@ if st.session_state.cxc_results is not None:
     st.dataframe(res["global_blockinfo_df"], use_container_width=True)
 
     st.subheader("Figures")
-    st.image(res["fig_original_png"], caption="Original correlation (cell-type boxes)")
-    st.image(res["fig_sorted_png"], caption="Sorted correlation (cell-type boxes + detected blocks)")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.image(
+            res["fig_original_png"],
+            caption="Original correlation (cell-type boxes)",
+            use_container_width=True
+        )
+
+    with col2:
+        st.image(
+            res["fig_sorted_png"],
+            caption="Sorted correlation (cell-type boxes + detected blocks)",
+            use_container_width=True
+        )
 
     colA, colB = st.columns(2)
     with colA:

@@ -16,8 +16,8 @@ from greedy_peeling import greedy_peeling_X_all
 # =========================================================
 @dataclass
 class CXCOptions:
-    lambda_stage1: float = 1.93
-    lambda_stage2: float = 1.92
+    lambda_stage1: float = 1.80
+    lambda_stage2: float = 1.70
 
     min_cells: int = 30
     min_block_size: int = 5   # <<< FIX: enforce block size >= 5

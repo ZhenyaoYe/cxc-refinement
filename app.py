@@ -62,7 +62,7 @@ def simulate_correlation_matrix(
     }
 
     # Sparsity controls (VERY important)
-    within_block_density = 0.8   # fraction of non-zero edges inside blocks
+    within_block_density = 0.6   # fraction of non-zero edges inside blocks
     within_block_sd      = 0.05
 
     for i in range(len(sizes)):
@@ -93,7 +93,7 @@ def simulate_correlation_matrix(
                               scale=within_block_sd,
                               size=mask.sum())
             block[mask] = vals
-            
+
             # symmetrize + diagonal
             block = (block + block.T) / 2
             np.fill_diagonal(block, 1.0)
@@ -218,7 +218,7 @@ if run_btn:
             lambda_stage1=float(lambda1),
             lambda_stage2=float(lambda2),
             min_cells=int(min_cells),
-
+            min_block_size=5,#int(min_block_size),
             corr_threshold=0.05, #float(corr_thr),
             stage2_skip_mean_abs=0.02, #float(stage2_skip),
 

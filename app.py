@@ -192,8 +192,8 @@ st.header("CXC dense pattern refinement")
 col1, col2 = st.columns(2)
 
 with col1:
-    lambda1 = st.number_input("Lambda (primary )", value=1.93)
-    lambda2 = st.number_input("Lambda (stage 2)", value=1.92)
+    lambda1 = st.number_input("Lambda (primary )", value=1.80)
+    lambda2 = st.number_input("Lambda (stage 2)", value=1.70)
     min_cells = st.number_input("Minimum cells required per cell type", value=30)
 
 #with col2:

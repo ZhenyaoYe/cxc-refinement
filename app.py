@@ -53,7 +53,7 @@ def simulate_correlation_matrix(
     }
 
     # Sparsity controls (within CT only)
-    within_block_density = 0
+    within_block_density = 1.0
     within_block_sd      = 0.05
 
     # =====================================================

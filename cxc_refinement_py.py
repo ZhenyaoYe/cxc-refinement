@@ -1,7 +1,7 @@
 import io
 import zipfile
 from dataclasses import dataclass
-from typing import Dict, List, Tuple, Optional
+from typing import List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -20,7 +20,7 @@ class CXCOptions:
     lambda_stage2: float = 1.70
 
     min_cells: int = 30
-    min_block_size: int = 5   # <<< FIX: enforce block size >= 5
+    min_block_size: int = 5
 
     corr_threshold: float = 0.05
     stage2_skip_mean_abs: float = 0.02
@@ -50,7 +50,7 @@ def _clean_blocks(blocks: List[np.ndarray], n: int) -> List[np.ndarray]:
             continue
         v = np.unique(np.asarray(v, dtype=int))
         v = v[(v >= 0) & (v < n)]
-        if v.size > 0:
+        if v.size >= 1:
             clean.append(v)
     return clean
 
@@ -75,7 +75,7 @@ def _concat_preserve_order(blocks: List[np.ndarray], n: int) -> np.ndarray:
 
 
 # =========================================================
-# Per-celltype processing
+# Per-cell-type processing
 # =========================================================
 def _process_one_celltype(corr, row, opts):
     ct = str(row.CellType)
@@ -84,8 +84,7 @@ def _process_one_celltype(corr, row, opts):
     global_map = np.arange(s, e + 1)
 
     if n < opts.min_cells:
-        order = global_map.copy()
-        return ct, [], order, []
+        return ct, [], global_map.copy(), []
 
     sub = corr[s:e + 1, s:e + 1].copy()
     np.fill_diagonal(sub, 0)
@@ -134,6 +133,83 @@ def _process_one_celltype(corr, row, opts):
 
 
 # =========================================================
+# Side-by-side plotting (FIXED)
+# =========================================================
+def _plot_side_by_side(corr, boundaries, blocks, order, opts):
+    corr_sorted = corr[np.ix_(order, order)]
+    pos = {g: i for i, g in enumerate(order)}
+
+    fig, axes = plt.subplots(
+        1, 2, figsize=(12, 6), dpi=150,
+        gridspec_kw={"wspace": 0.12}
+    )
+
+    # ---------- LEFT: original ----------
+    im = axes[0].imshow(
+        corr, cmap=opts.cmap,
+        vmin=opts.clim[0], vmax=opts.clim[1]
+    )
+    axes[0].set_title("Original correlation (cell-type boxes)")
+    axes[0].set_xticks([])
+    axes[0].set_yticks([])
+
+    colors = plt.cm.tab10(np.linspace(0, 1, len(boundaries)))
+    for i, r in boundaries.iterrows():
+        s, e = r.Start, r.End
+        axes[0].add_patch(
+            patches.Rectangle(
+                (s - .5, s - .5),
+                e - s + 1, e - s + 1,
+                edgecolor=colors[i],
+                facecolor="none", lw=2
+            )
+        )
+
+    # ---------- RIGHT: sorted ----------
+    axes[1].imshow(
+        corr_sorted, cmap=opts.cmap,
+        vmin=opts.clim[0], vmax=opts.clim[1]
+    )
+    axes[1].set_title("Sorted correlation (cell-type boxes + detected blocks)")
+    axes[1].set_xticks([])
+    axes[1].set_yticks([])
+
+    start = 0
+    for i, r in boundaries.iterrows():
+        n = r.End - r.Start + 1
+        axes[1].add_patch(
+            patches.Rectangle(
+                (start - .5, start - .5),
+                n, n,
+                edgecolor=colors[i],
+                facecolor="none", lw=2
+            )
+        )
+        start += n
+
+    for g in blocks:
+        idx = np.array([pos[x] for x in g])
+        s, e = idx.min(), idx.max()
+        axes[1].add_patch(
+            patches.Rectangle(
+                (s - .5, s - .5),
+                e - s + 1, e - s + 1,
+                edgecolor="red",
+                facecolor="none", lw=1
+            )
+        )
+
+    # ---------- shared colorbar ----------
+    cbar = fig.colorbar(im, ax=axes, fraction=0.046, pad=0.04)
+    cbar.set_label("Correlation")
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png")
+    plt.close(fig)
+    return buf.getvalue()
+
+
+# =========================================================
 # Main entry
 # =========================================================
 def cxc_refinement_py(corr, celltypes, opts=None):
@@ -151,7 +227,7 @@ def cxc_refinement_py(corr, celltypes, opts=None):
     order_full = []
 
     for _, r in boundaries.iterrows():
-        ct, blocks, order, info = _process_one_celltype(corr, r, opts)
+        _, blocks, order, info = _process_one_celltype(corr, r, opts)
         global_blocks.extend(blocks)
         order_full.append(order)
         rows.extend(info)
@@ -162,8 +238,9 @@ def cxc_refinement_py(corr, celltypes, opts=None):
     if not df.empty:
         df["GlobalBlockID"] = np.arange(1, len(df) + 1)
 
-    fig1 = _plot_original(corr, boundaries, opts)
-    fig2 = _plot_sorted(corr, boundaries, global_blocks, order_full, opts)
+    fig_png = _plot_side_by_side(
+        corr, boundaries, global_blocks, order_full, opts
+    )
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
@@ -172,60 +249,6 @@ def cxc_refinement_py(corr, celltypes, opts=None):
 
     return {
         "global_blockinfo_df": df,
-        "fig_original_png": fig1,
-        "fig_sorted_png": fig2,
+        "fig_side_by_side_png": fig_png,
         "artifacts_zip_bytes": buf.getvalue()
     }
-
-
-# =========================================================
-# Plotting
-# =========================================================
-def _plot_original(corr, boundaries, opts):
-    fig, ax = plt.subplots(figsize=(6, 6), dpi=150)
-    im = ax.imshow(corr, cmap=opts.cmap, vmin=opts.clim[0], vmax=opts.clim[1])
-    ax.set_xticks([])
-    ax.set_yticks([])
-    plt.colorbar(im, ax=ax)
-
-    colors = plt.cm.tab10(np.linspace(0, 1, len(boundaries)))
-    for i, r in boundaries.iterrows():
-        s, e = r.Start, r.End
-        ax.add_patch(patches.Rectangle((s - .5, s - .5), e - s + 1, e - s + 1,
-                                       edgecolor=colors[i], facecolor="none", lw=2))
-    ax.set_title("Original correlation (cell-type boxes)")
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png", bbox_inches="tight")
-    plt.close(fig)
-    return buf.getvalue()
-
-
-def _plot_sorted(corr, boundaries, blocks, order, opts):
-    corr = corr[np.ix_(order, order)]
-    pos = {g: i for i, g in enumerate(order)}
-
-    fig, ax = plt.subplots(figsize=(6, 6), dpi=150)
-    im = ax.imshow(corr, cmap=opts.cmap, vmin=opts.clim[0], vmax=opts.clim[1])
-    ax.set_xticks([])
-    ax.set_yticks([])
-    plt.colorbar(im, ax=ax)
-
-    start = 0
-    colors = plt.cm.tab10(np.linspace(0, 1, len(boundaries)))
-    for i, r in boundaries.iterrows():
-        n = r.End - r.Start + 1
-        ax.add_patch(patches.Rectangle((start - .5, start - .5), n, n,
-                                       edgecolor=colors[i], facecolor="none", lw=2))
-        start += n
-
-    for g in blocks:
-        idx = np.array([pos[x] for x in g])
-        s, e = idx.min(), idx.max()
-        ax.add_patch(patches.Rectangle((s - .5, s - .5), e - s + 1, e - s + 1,
-                                       edgecolor="red", facecolor="none", lw=1))
-
-    ax.set_title("Sorted correlation (cell-type boxes + detected blocks)")
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png", bbox_inches="tight")
-    plt.close(fig)
-    return buf.getvalue()

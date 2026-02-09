@@ -260,39 +260,19 @@ if st.session_state.cxc_results is not None:
     st.dataframe(res["global_blockinfo_df"], use_container_width=True)
 
     st.subheader("Figures")
-    
-    col1, col2 = st.columns(2)
 
-    with col1:
-        st.image(
-            res["fig_original_png"],
-            caption="Original correlation (cell-type boxes)",
-            use_container_width=True
-        )
+    st.image(
+        res["fig_side_by_side_png"],
+        caption="Original (left) vs Sorted (right) correlation",
+        use_container_width=True
+    )
 
-    with col2:
-        st.image(
-            res["fig_sorted_png"],
-            caption="Sorted correlation (cell-type boxes + detected blocks)",
-            use_container_width=True
-        )
-
-    colA, colB = st.columns(2)
-    with colA:
-        st.download_button(
-            label="Download original figure (PNG)",
-            data=res["fig_original_png"],
-            file_name="corr_original_celltype_boxes.png",
-            mime="image/png"
-        )
-
-    with colB:
-        st.download_button(
-            label="Download sorted figure (PNG)",
-            data=res["fig_sorted_png"],
-            file_name="corr_sorted_blocks.png",
-            mime="image/png"
-        )
+    st.download_button(
+        label="Download figure (PNG)",
+        data=res["fig_side_by_side_png"],
+        file_name="corr_side_by_side.png",
+        mime="image/png"
+    )
 
     st.subheader("Download all results")
     st.download_button(
